@@ -1,0 +1,110 @@
+[
+  {
+    "employee_id": "E1001",
+    "name": "Asha Fernando",
+    "department": "platform-engineering",
+    "title": "Director, Platform Engineering",
+    "email": "asha.fernando@company.example",
+    "manager_id": "E1000",
+    "location": "Colombo"
+  },
+  {
+    "employee_id": "E1002",
+    "name": "Nimal Perera",
+    "department": "payments",
+    "title": "Head of Payments",
+    "email": "nimal.perera@company.example",
+    "manager_id": "E1000",
+    "location": "Colombo"
+  },
+  {
+    "employee_id": "E1003",
+    "name": "Kavindi Silva",
+    "department": "payments",
+    "title": "Senior SRE",
+    "email": "kavindi.silva@company.example",
+    "manager_id": "E1002",
+    "location": "Colombo"
+  },
+  {
+    "employee_id": "E1004",
+    "name": "Ruwan Jayasuriya",
+    "department": "payments",
+    "title": "Payments Engineer",
+    "email": "ruwan.jayasuriya@company.example",
+    "manager_id": "E1002",
+    "location": "Kandy"
+  },
+  {
+    "employee_id": "E1005",
+    "name": "Dilani Wickramasinghe",
+    "department": "security",
+    "title": "CISO",
+    "email": "dilani.w@company.example",
+    "manager_id": "E1000",
+    "location": "Colombo"
+  },
+  {
+    "employee_id": "E1006",
+    "name": "Tharindu Gunasekara",
+    "department": "security",
+    "title": "Security Analyst",
+    "email": "tharindu.g@company.example",
+    "manager_id": "E1005",
+    "location": "Colombo"
+  },
+  {
+    "employee_id": "E1007",
+    "name": "Sachini Rajapaksa",
+    "department": "risk-compliance",
+    "title": "Head of Compliance",
+    "email": "sachini.r@company.example",
+    "manager_id": "E1000",
+    "location": "Colombo"
+  },
+  {
+    "employee_id": "E1008",
+    "name": "Chamara Bandara",
+    "department": "platform-engineering",
+    "title": "Kafka Platform Lead",
+    "email": "chamara.b@company.example",
+    "manager_id": "E1001",
+    "location": "Dambulla"
+  },
+  {
+    "employee_id": "E1009",
+    "name": "Ishara Dissanayake",
+    "department": "customer-support",
+    "title": "Support Operations Manager",
+    "email": "ishara.d@company.example",
+    "manager_id": "E1000",
+    "location": "Colombo"
+  },
+  {
+    "employee_id": "E1010",
+    "name": "Lakmal Herath",
+    "department": "retail-banking",
+    "title": "Product Owner, Cards",
+    "email": "lakmal.h@company.example",
+    "manager_id": "E1000",
+    "location": "Colombo"
+  },
+  {
+    "employee_id": "E1011",
+    "name": "Hiruni Abeysekera",
+    "department": "data-engineering",
+    "title": "Data Engineer",
+    "email": "hiruni.a@company.example",
+    "manager_id": "E1001",
+    "location": "Colombo"
+  },
+  {
+    "employee_id": "E1012",
+    "name": "Pasindu Karunaratne",
+    "department": "platform-engineering",
+    "title": "Site Reliability Engineer",
+    "email": "pasindu.k@company.example",
+    "manager_id": "E1001",
+    "location": "Kandy"
+  }
+]

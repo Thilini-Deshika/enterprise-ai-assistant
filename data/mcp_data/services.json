@@ -1,0 +1,82 @@
+[
+  {
+    "service": "payment-gateway",
+    "tier": 1,
+    "owner_team": "payments",
+    "oncall_employee_id": "E1003",
+    "runbook_doc_id": "RB-PAY-001",
+    "depends_on": [
+      "fraud-engine",
+      "card-processing",
+      "ledger-service"
+    ]
+  },
+  {
+    "service": "card-processing",
+    "tier": 1,
+    "owner_team": "payments",
+    "oncall_employee_id": "E1004",
+    "runbook_doc_id": "RB-PAY-002",
+    "depends_on": [
+      "external-card-processor"
+    ]
+  },
+  {
+    "service": "ledger-service",
+    "tier": 1,
+    "owner_team": "payments",
+    "oncall_employee_id": "E1002",
+    "runbook_doc_id": "RB-PAY-001",
+    "depends_on": [
+      "postgres-ledger",
+      "kafka-platform"
+    ]
+  },
+  {
+    "service": "fraud-engine",
+    "tier": 2,
+    "owner_team": "security",
+    "oncall_employee_id": "E1006",
+    "runbook_doc_id": "",
+    "depends_on": [
+      "customer-profile"
+    ]
+  },
+  {
+    "service": "mobile-banking-api",
+    "tier": 2,
+    "owner_team": "retail-banking",
+    "oncall_employee_id": "E1010",
+    "runbook_doc_id": "",
+    "depends_on": [
+      "customer-profile",
+      "payment-gateway"
+    ]
+  },
+  {
+    "service": "notification-service",
+    "tier": 3,
+    "owner_team": "platform-engineering",
+    "oncall_employee_id": "E1012",
+    "runbook_doc_id": "",
+    "depends_on": [
+      "kafka-platform"
+    ]
+  },
+  {
+    "service": "customer-profile",
+    "tier": 2,
+    "owner_team": "retail-banking",
+    "oncall_employee_id": "E1010",
+    "runbook_doc_id": "",
+    "depends_on": []
+  },
+  {
+    "service": "kafka-platform",
+    "tier": 1,
+    "owner_team": "platform-engineering",
+    "oncall_employee_id": "E1008",
+    "runbook_doc_id": "RB-PLT-004",
+    "depends_on": []
+  }
+]
