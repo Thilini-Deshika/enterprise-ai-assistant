@@ -1,0 +1,39 @@
+# docker compose up --build        -> API :8000, UI :8501, MCP :8765
+# docker compose run --rm ingest   -> (re)build the index / push to Pinecone
+x-app: &app
+  build: .
+  env_file: .env
+  volumes:
+    - ./data:/app/data
+services:
+  mcp:
+    <<: *app
+    command: python -m app.mcp_server.server
+    environment:
+      MCP_SERVER_TRANSPORT: streamable-http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: "8765"
+    ports: ["8765:8765"]
+  api:
+    <<: *app
+    environment:
+      MCP_TRANSPORT: http
+      MCP_URL: http://mcp:8765/mcp
+    depends_on: [mcp]
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  ui:
+    <<: *app
+    command: streamlit run ui/streamlit_app.py --server.port 8501 --server.address 0.0.0.0 --browser.gatherUsageStats false
+    environment:
+      API_URL: http://api:8000
+    depends_on: [api]
+    ports: ["8501:8501"]
+  ingest:
+    <<: *app
+    profiles: ["tools"]
+    command: python -m app.ingestion.ingest
