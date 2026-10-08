@@ -1,0 +1,22 @@
+# Versions below are the ones this project was built and tested against (Python 3.12).
+fastapi>=0.115
+uvicorn[standard]>=0.30
+pydantic>=2.7
+pydantic-settings>=2.3
+python-dotenv>=1.0
+httpx>=0.27
+streamlit>=1.50
+langgraph>=1.0
+langchain-core>=1.0
+langchain-openai>=1.0
+langsmith>=0.4
+openai>=1.50
+pinecone>=5.0
+mcp>=1.2,<2          # MCP SDK v1 API (FastMCP). v2 renamed the server API.
+PyJWT>=2.8
+pyyaml>=6.0
+numpy>=1.26
+pandas>=2.2
+structlog>=24.1
+pytest>=8.0
+pytest-asyncio>=0.23
