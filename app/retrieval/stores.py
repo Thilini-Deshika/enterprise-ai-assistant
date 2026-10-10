@@ -146,11 +146,24 @@ class PineconeStore(VectorStore):
                 "id": r.id, "values": r.dense, "sparse_values": r.sparse,
                 "metadata": {k: v for k, v in r.metadata.items() if v is not None}})
 
+        batch = max(1, self.s.pinecone_upsert_batch)
+
         def _do():
+            import time
             idx = self._idx()
             for ns, vecs in by_ns.items():
-                for i in range(0, len(vecs), 100):
-                    idx.upsert(vectors=vecs[i:i + 100], namespace=ns)
+                for i in range(0, len(vecs), batch):
+                    chunk = vecs[i:i + batch]
+                    for attempt in range(1, 5):  # slow or flaky uplinks (VPN, WSL) time out on large bodies
+                        try:
+                            idx.upsert(vectors=chunk, namespace=ns, timeout=self.s.pinecone_upsert_timeout_s)
+                            break
+                        except Exception as exc:  # noqa: BLE001
+                            if attempt == 4:
+                                raise
+                            log.warning("pinecone_upsert_retry", namespace=ns, attempt=attempt, error=str(exc)[:120])
+                            time.sleep(1.5 * attempt)
+                log.info("pinecone_upserted", namespace=ns, vectors=len(vecs))
         await asyncio.to_thread(_do)
 
     async def query(self, *, dense, sparse, namespaces, flt, top_k) -> list[RawMatch]:

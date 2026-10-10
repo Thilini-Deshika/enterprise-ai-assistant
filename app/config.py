@@ -53,6 +53,8 @@ class Settings(BaseSettings):
 
     # ---- Vector DB / retrieval ----
     vector_backend: Literal["auto", "pinecone", "local"] = "auto"
+    pinecone_upsert_batch: int = 20        # vectors per upsert request (smaller = safer on slow links)
+    pinecone_upsert_timeout_s: float = 60.0
     pinecone_api_key: str = ""
     pinecone_index: str = "enterprise-kb"
     pinecone_cloud: str = "aws"
