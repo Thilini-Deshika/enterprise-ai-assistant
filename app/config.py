@@ -117,6 +117,11 @@ class Settings(BaseSettings):
         return self.data_dir / "app.db"
 
     @property
+    def azure_uses_v1(self) -> bool:
+        """True when AZURE_OPENAI_ENDPOINT is an Azure v1 endpoint (ends with /openai/v1)."""
+        return self.azure_openai_endpoint.rstrip("/").endswith("/openai/v1")
+
+    @property
     def resolved_llm_provider(self) -> str:
         if self.llm_provider != "auto":
             return self.llm_provider

@@ -55,7 +55,12 @@ class LLMService:
         key = (tier, json_mode, temperature)
         if key not in self._chat_cache:
             kwargs = dict(timeout=self.s.llm_timeout_s, max_retries=0, temperature=temperature)
-            if self.provider == "azure":
+            if self.provider == "azure" and self.s.azure_uses_v1:
+                # Azure "v1" endpoint (.../openai/v1): plain OpenAI client, deployment name goes in `model`.
+                from langchain_openai import ChatOpenAI
+                model = ChatOpenAI(model=self._model_name(tier), api_key=self.s.azure_openai_api_key,
+                                   base_url=self.s.azure_openai_endpoint, **kwargs)
+            elif self.provider == "azure":
                 from langchain_openai import AzureChatOpenAI
                 model = AzureChatOpenAI(azure_deployment=self._model_name(tier), api_version=self.s.azure_openai_api_version,
                                         azure_endpoint=self.s.azure_openai_endpoint, api_key=self.s.azure_openai_api_key, **kwargs)
@@ -118,7 +123,11 @@ class LLMService:
     # ------------------------------------------------------------------ embeddings
     def _get_embedder(self):
         if self._embedder is None:
-            if self.provider == "azure":
+            if self.provider == "azure" and self.s.azure_uses_v1:
+                from langchain_openai import OpenAIEmbeddings
+                self._embedder = OpenAIEmbeddings(model=self.s.azure_deployment_embedding, api_key=self.s.azure_openai_api_key,
+                                                  base_url=self.s.azure_openai_endpoint, check_embedding_ctx_length=False)
+            elif self.provider == "azure":
                 from langchain_openai import AzureOpenAIEmbeddings
                 self._embedder = AzureOpenAIEmbeddings(azure_deployment=self.s.azure_deployment_embedding,
                                                        api_version=self.s.azure_openai_api_version,
