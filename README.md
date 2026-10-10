@@ -4,43 +4,24 @@ An open, extensible enterprise knowledge assistant. The bundled demo persona is 
 documents (policies, runbooks, incident reports, architecture documents, product specifications, meeting notes),
 calls enterprise tools, cites its evidence, and enforces role-based access to both documents and tools.
 
-Stack: FastAPI (async) | LangGraph multi-agent orchestration | Recursive Language Model (RLM) research agent |
-hybrid dense + BM25 retrieval on Pinecone | MCP tool server | LangSmith tracing | Streamlit UI with a live agent activity panel.
 
 ## Features
 
-- Multi-agent LangGraph graph: input guard, memory, supervisor, retrieval, research (RLM), tools, human approval, response, validator.
-- Hybrid retrieval: dense embeddings + BM25 sparse vectors, weighted fusion, reranking, metadata filters, one Pinecone namespace per access tier.
-- RLM research agent: the model writes a Python search plan, explores the corpus through a restricted API, reads only targeted sections,
-  processes batches in parallel with sub-model calls, recurses on oversized contexts, and aggregates cited findings.
-- Tools: knowledge search, sandboxed pandas analysis, MCP server (employee directory, service catalog, incident records, ticket creation).
-- Security: JWT auth, RBAC (viewer, analyst, administrator), prompt-injection detection (user input, retrieved documents, tool output),
-  tool registry with validation and human approval for write tools, citation verification, secret and card-number redaction, audit log.
-- Memory: working memory, rolling summary, long-term episodic memory and preferences, feedback-weighted recall.
-- Reliability: retries, circuit breakers, timeouts, graceful degradation when the LLM, vector database or MCP server is unavailable.
-- Observability: structured JSON logs, LangSmith traces for every turn, node, tool call, retrieval and LLM call.
-- Token-bucket rate limiting per user with configurable thresholds.
+- Multi-agent LangGraph graph with a human approval step for write tools
+- Hybrid retrieval (dense + BM25) on Pinecone, one namespace per access tier, reranking, metadata filters
+- Recursive Language Model research agent for questions that span many documents
+- Tools: knowledge search, pandas analysis, MCP server with dummy enterprise data
+- JWT auth, role-based access to documents and tools, prompt-injection and citation guardrails, token-bucket rate limiting
+- Session and long-term memory with feedback-weighted recall
+- Graceful degradation when the LLM, Pinecone or MCP is unavailable
+- LangSmith tracing, structured logs, and a live Agent Activity panel in the UI
 
 ## Architecture overview
 
-```
-Streamlit UI  --SSE-->  FastAPI  (JWT auth, RBAC, rate limit, validation)
-                           |
-                      LangGraph graph
-   input_guard -> memory_load -> supervisor -> [retrieval | research (RLM) | tools <-> approval]
-                                                      |
-                                            response -> validator -> memory_write
-                           |
-        Tool registry (RBAC, args validation, approval, audit) --> Pinecone | MCP server | pandas sandbox
-```
+![System context](docs/images/system-context.png)
 
-Access model: documents are tagged `public`, `internal`, `confidential` or `restricted`; each tier is a Pinecone namespace.
-
-| Role | Tools | Readable document tiers |
-|---|---|---|
-| viewer | chat, search | public, internal |
-| analyst | + analytics, MCP read tools | + confidential |
-| administrator | all tools (write tools need approval) | + restricted |
+More diagrams and the design write-up are in [docs/](docs/): [architecture](docs/architecture.md),
+[design decisions](docs/design-decisions.md) and [security](docs/security.md).
 
 ## Quick start (no API keys needed)
 
@@ -59,30 +40,27 @@ streamlit run ui/streamlit_app.py    # terminal 2, opens http://localhost:8501
 With empty keys the app runs in offline mode: a deterministic mock LLM and a local vector store. Every feature works,
 but answers are extractive. The activity panel shows which LLM provider and vector backend are active.
 
-### Demo users
+### Demo users and roles
 
-| user | password | role |
-|---|---|---|
-| viewer | viewer123 | viewer |
-| analyst | analyst123 | analyst |
-| admin | admin123 | administrator |
+| user | password | role | can use | can read |
+|---|---|---|---|---|
+| viewer | viewer123 | viewer | chat, search | public, internal |
+| analyst | analyst123 | analyst | + analytics, MCP read tools | + confidential |
+| admin | admin123 | administrator | all tools (writes need approval) | + restricted |
 
-These are hard-coded for local use only. Replace `authenticate()` and `decode_token()` in `app/security/auth.py` with your
-identity provider (for example OIDC) for any shared deployment. The RBAC code does not change.
+Documents are tagged `public`, `internal`, `confidential` or `restricted`, and each tier is a Pinecone namespace.
+The demo users are hard-coded for local use. For a shared deployment, replace `authenticate()` and `decode_token()` in `app/security/auth.py`
+with your identity provider; the RBAC code does not change.
 
 ## Configuration
 
-All settings are environment variables (see `.env.example` for the full list).
+Settings are environment variables; `.env.example` lists all of them with comments. The ones you are most likely to change:
 
 | Variable | Purpose |
 |---|---|
 | `LLM_PROVIDER` | `auto` (default), `openai`, `azure`, `mock` |
-| `OPENAI_API_KEY`, `LLM_MODEL_FAST`, `LLM_MODEL_STRONG`, `EMBEDDING_MODEL` | OpenAI models |
-| `AZURE_OPENAI_*`, `AZURE_DEPLOYMENT_*` | Azure OpenAI endpoint and deployments |
 | `VECTOR_BACKEND` | `auto` (Pinecone if a key is set), `pinecone`, `local` |
-| `PINECONE_API_KEY`, `PINECONE_INDEX`, `PINECONE_CLOUD`, `PINECONE_REGION` | Pinecone |
 | `HYBRID_ALPHA`, `HYBRID_MODE` | dense/sparse weight; `fusion` (two queries, explainable) or `native` (one query) |
-| `LANGSMITH_TRACING`, `LANGSMITH_API_KEY`, `LANGSMITH_PROJECT` | tracing |
 | `ORG_NAME`, `ASSISTANT_NAME` | persona used in the system prompt and greetings |
 | `JWT_SECRET` | signing key for access tokens (set a long random value) |
 | `RATE_LIMITS` | per-role token bucket (JSON: capacity, refill_per_sec) |
@@ -100,15 +78,39 @@ LANGSMITH_API_KEY=lsv2_...
 LANGSMITH_PROJECT=enterprise-ai-assistant
 ```
 
-Then rebuild the index and restart the API:
+For Azure OpenAI, use these instead of `OPENAI_API_KEY`:
+
+```ini
+LLM_PROVIDER=azure
+AZURE_OPENAI_API_KEY=...
+AZURE_OPENAI_ENDPOINT=https://<resource>.openai.azure.com/openai/v1
+AZURE_DEPLOYMENT_FAST=<chat deployment>
+AZURE_DEPLOYMENT_STRONG=<chat deployment>      # can be the same deployment
+AZURE_DEPLOYMENT_EMBEDDING=<embedding deployment>
+```
+
+Check that every service is reachable, load the documents, then start the API:
 
 ```bash
+python -m scripts.check_connections
 python -m app.ingestion.ingest       # embeds chunks, writes data/index, upserts to Pinecone namespaces
 uvicorn app.main:app --port 8000
 ```
 
-Changing the LLM provider or embedding model changes vector dimensions, so the index is rebuilt automatically on the next start.
-Verify with `curl localhost:8000/ready`, which reports the active LLM provider and vector backend.
+Changing the LLM provider or embedding model changes vector dimensions, so re-run the ingest (or delete the Pinecone index first if the dimension changed).
+`curl localhost:8000/ready` reports the active LLM provider and vector backend.
+
+## Try it
+
+Log in as `analyst` and ask:
+
+1. `What is the password and MFA standard for employees?`
+2. `Summarize all outage reports related to payment failures during the last year and identify recurring root causes.`
+3. `Who is on call for payment-gateway, and what does its runbook say to do first when latency spikes?`
+4. `How many incidents were there by root cause and what was the average duration?`
+
+Log in as `admin` and ask `Please create an incident ticket for card-processing latency spikes` to see the approval step.
+Ask a restricted-topic question as `viewer` and as `admin` to compare what each role can see.
 
 ## Branding and adapting to your organization
 
@@ -173,24 +175,7 @@ The suite runs fully offline (mock LLM, local vector store) and includes failure
 
 ## Project layout
 
-```
-app/
-  main.py, api/             FastAPI app and routes (SSE streaming)
-  services/                 container (wiring) and orchestrator (run and resume a turn)
-  agents/                   LangGraph graph, nodes, state, heuristics
-  agents/rlm/               planner, environment, runner, restricted runtime
-  retrieval/                sparse encoder, vector stores, hybrid retriever, catalog, filters
-  tools/                    tool registry, built-in tools, pandas sandbox, MCP client
-  mcp_server/               dummy enterprise data over MCP
-  memory/                   session and long-term memory
-  security/                 rbac, auth, rate limiting, injection, guardrails, audit
-  llm/                      OpenAI / Azure / mock provider
-  ingestion/                chunking and index build
-ui/streamlit_app.py         chat and agent activity panel
-data/                       sample documents and MCP data
-scripts/                    sample data generator
-tests/
-```
+See the code map in [docs/architecture.md](docs/architecture.md). In short: `app/` (API, agents, retrieval, tools, security), `ui/` (Streamlit), `data/`, `docs/`, `scripts/`, `tests/`.
 
 ## Troubleshooting
 
@@ -201,3 +186,6 @@ tests/
 | `NotImplementedError` from asyncio subprocess on Windows | use WSL or Docker (developed and tested on Linux) |
 | `mcp` import errors | keep `mcp<2` (version 2 renamed the server API) |
 | HTTP 429 | expected rate limiting; tune `RATE_LIMITS` |
+| Azure `404 Resource not found` | check `AZURE_OPENAI_ENDPOINT` and that the `AZURE_DEPLOYMENT_*` names match your deployment names exactly |
+| Pinecone upsert times out | lower `PINECONE_UPSERT_BATCH` (for example 5) and re-run ingest |
+| Not sure what is misconfigured | run `python -m scripts.check_connections` |
