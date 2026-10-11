@@ -4,6 +4,7 @@ An open, extensible enterprise knowledge assistant. The bundled demo persona is 
 documents (policies, runbooks, incident reports, architecture documents, product specifications, meeting notes),
 calls enterprise tools, cites its evidence, and enforces role-based access to both documents and tools.
 
+Demo video (45 min): [Watch on Loom](https://www.loom.com/share/1195bcbc988242b28076507e44b4b92d)
 
 ## Features
 
