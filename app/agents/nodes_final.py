@@ -188,7 +188,8 @@ def make_validator(deps: AgentDeps):
                 if mem.get("summary"):
                     earlier = f"Summary: {mem['summary'][:800]}\n" + earlier
                 research_part += f"\n\nEARLIER CONVERSATION (already verified; the answer may restate it):\n{earlier}" if earlier else ""
-                verdict = await deps.llm.json(JUDGE_SYSTEM, f"EVIDENCE:\n{ev_text}{research_part}\n\nTOOL RESULTS: {json.dumps([t['data'] for t in tools.values()], default=str)[:1500]}\n\nANSWER:\n{cleaned}",
+                tool_text = "\n".join(f"[{t['id']}] {_tool_body(t, state)[:2500]}" for t in tools.values())[:7000]
+                verdict = await deps.llm.json(JUDGE_SYSTEM, f"EVIDENCE:\n{ev_text}{research_part}\n\nTOOL RESULTS (id: data): {tool_text}\n\nANSWER:\n{cleaned}",
                                               task="judge", tier="fast", ctx={})
                 ok = bool(verdict.get("faithful", True))
                 all_checks.append(CheckResult("faithfulness_judge", ok, "all claims supported" if ok else f"unsupported: {verdict.get('unsupported_claims', [])[:2]}"))

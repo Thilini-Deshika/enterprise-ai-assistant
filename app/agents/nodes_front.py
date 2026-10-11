@@ -98,6 +98,9 @@ def make_supervisor(deps: AgentDeps):
             status = "degraded"
             emit("agent_state", agent="supervisor", status="degraded", detail=f"LLM routing failed ({type(exc).__name__}); using rule-based routing")
         intent = decision.get("intent") if decision.get("intent") in H.INTENTS else H.classify_intent(q)
+        if H.is_service_ownership_question(q):
+            intent = "directory_lookup"  # structured catalog question: use the MCP tools, not document search
+            decision["plan"] = []
         if H.is_preference_statement(q):
             intent = "chitchat"  # nothing to research; memory_write stores the preference
         llm_filters = {k: v for k, v in (decision.get("filters") or {}).items() if v}

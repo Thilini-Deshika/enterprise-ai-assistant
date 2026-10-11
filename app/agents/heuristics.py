@@ -16,6 +16,7 @@ INTENTS = ("chitchat", "knowledge_qa", "deep_research", "analytics", "directory_
 _CHITCHAT = re.compile(r"^\s*(hi|hello|hey|thanks|thank you|good (morning|afternoon|evening)|who are you|what can you do|help)\b[^?]{0,40}\??\s*$", re.I)
 _ADMIN = re.compile(r"\b(create|open|raise|file|log)\b.{0,25}\b(ticket|incident record)\b|\bre-?index\b|\brebuild\b.{0,15}\bindex\b", re.I)
 _DIRECTORY = re.compile(r"\bwho (is|are|owns|owned|manages|leads|runs)\b|\bon-?call\b|\bowner of\b|\bcontact\b|\bemail (of|for)\b|\bwhich team\b|\bservice (tier|owner|catalog)\b|\bemployee\b", re.I)
+_SERVICE_OWNERSHIP = re.compile(r"\bwhich services\b.{0,50}\b(own|owns|owned|run|runs|manage|manages)\b|\bservices (does|do|is|are)\b.{0,40}\b(own|owns|owned|managed)\b|\blist (all )?services\b", re.I)
 _ANALYTICS = re.compile(r"\bhow many\b|\bcount\b|\baverage\b|\bmean\b|\bmedian\b|\bdistribution\b|\bbreakdown\b|\bstatistics\b|\bmttr\b|\brank\b|\btop \d+\b|\bby (service|severity|root cause)\b|\bpercent(age)?\b", re.I)
 _DEEP = re.compile(r"\bsummari[sz]e all\b|\ball\b.{0,40}\b(reports?|incidents?|outages?|postmortems?)\b|\brecurring\b|\broot causes?\b|\btrends?\b|\bacross (all|the)\b|\b(last|past) (year|\d+ months?)\b|\bcommon (causes|themes)\b|\bpatterns?\b", re.I)
 
@@ -34,6 +35,11 @@ _TYPE_KEYWORDS = {
 _PREFERENCE = re.compile(r"^\s*(please\s+)?((remember|note)( that| this)?\b|from now on\b|i prefer\b|my preference is\b|always (answer|respond|reply|use)\b)[^?]{3,240}$", re.I)
 
 
+def is_service_ownership_question(question: str) -> bool:
+    """"Which services does the payments team own?" is answered from the service catalog (structured data), not from documents."""
+    return bool(_SERVICE_OWNERSHIP.search(question))
+
+
 def is_preference_statement(question: str) -> bool:
     """A statement about how the user likes answers ("remember that I prefer short bullets"), not a question to research."""
     return bool(_PREFERENCE.match(question.strip()))
@@ -45,7 +51,7 @@ def classify_intent(question: str) -> str:
         return "chitchat"
     if _ADMIN.search(q):
         return "admin_action"
-    if _DIRECTORY.search(q):
+    if _DIRECTORY.search(q) or _SERVICE_OWNERSHIP.search(q):
         return "directory_lookup"
     if _DEEP.search(q) and not re.search(r"\bhow many\b|\bcount\b", q, re.I):
         return "deep_research"
@@ -132,6 +138,8 @@ def pick_tool_calls(question: str, intent: str, available: set[str], prior: list
         if done_tools:
             return {"calls": [], "done": True}
         svc = filters.get("service")
+        if _SERVICE_OWNERSHIP.search(question):
+            return {"calls": [{"tool": "mcp_list_services", "args": {}}], "done": False}
         if svc or re.search(r"on-?call|owner|owns|tier|service", q):
             return {"calls": [{"tool": "mcp_get_service", "args": {"service": svc or "payment-gateway"}}], "done": False}
         names = re.findall(r"\b[A-Z][a-z]+(?: [A-Z][a-z]+)?\b", question)

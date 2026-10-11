@@ -170,3 +170,11 @@ def test_tool_body_replaces_raw_incidents_once_analysis_has_run():
     ana = {"tool": "python_analysis", "ok": True, "data": {"result": []}}
     assert "incident_count" in json.loads(_tool_body(inc, {"tool_results": [inc, ana]}))
     assert "INC-2025-004" in _tool_body(inc, {"tool_results": [inc]})
+
+
+def test_service_ownership_question_is_a_directory_lookup():
+    from app.agents import heuristics as H
+    q = "Which services does the payments team own?"
+    assert H.is_service_ownership_question(q)
+    assert H.classify_intent(q) == "directory_lookup"
+    assert H.pick_tool_calls(q, "directory_lookup", {"mcp_list_services"}, [], {})["calls"][0]["tool"] == "mcp_list_services"
