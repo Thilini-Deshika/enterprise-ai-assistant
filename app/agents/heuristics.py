@@ -130,7 +130,8 @@ def pick_tool_calls(question: str, intent: str, available: set[str], prior: list
         if re.search(r"re-?index|rebuild", q):
             calls = [{"tool": "admin_reindex", "args": {}}]
         else:
-            svc = filters.get("service") or "payment-gateway"
+            named = re.search(r"\b[a-z][a-z0-9]*(?:-[a-z0-9]+)+\b", question)
+            svc = filters.get("service") or (named.group(0) if named else "payment-gateway")
             calls = [{"tool": "mcp_create_incident_ticket", "args": {
                 "title": question.strip()[:120], "severity": "sev3", "service": svc, "description": question.strip()[:400]}}]
         return {"calls": [] if {c["tool"] for c in calls} <= done_tools or prior else calls, "done": bool(prior)}

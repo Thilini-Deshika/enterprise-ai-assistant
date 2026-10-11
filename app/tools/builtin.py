@@ -61,7 +61,7 @@ class GetIncidentArgs(BaseModel):
 
 class CreateTicketArgs(BaseModel):
     title: str = Field(min_length=5, max_length=200)
-    severity: Literal["sev1", "sev2", "sev3", "sev4"]
+    severity: Literal["sev1", "sev2", "sev3", "sev4"] = "sev3"
     service: str = Field(pattern=r"^[a-z][a-z0-9\-]{2,40}$")
     description: str = Field(min_length=5, max_length=1000)
 

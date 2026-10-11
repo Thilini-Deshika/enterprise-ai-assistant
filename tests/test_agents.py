@@ -178,3 +178,10 @@ def test_service_ownership_question_is_a_directory_lookup():
     assert H.is_service_ownership_question(q)
     assert H.classify_intent(q) == "directory_lookup"
     assert H.pick_tool_calls(q, "directory_lookup", {"mcp_list_services"}, [], {})["calls"][0]["tool"] == "mcp_list_services"
+
+
+def test_admin_ticket_request_names_the_service_from_the_question():
+    from app.agents import heuristics as H
+    call = H.pick_tool_calls("Please create an incident ticket for card-processing latency spikes", "admin_action",
+                             {"mcp_create_incident_ticket"}, [], {})["calls"][0]
+    assert call["tool"] == "mcp_create_incident_ticket" and call["args"]["service"] == "card-processing"

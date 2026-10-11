@@ -146,6 +146,9 @@ def make_tools(deps: AgentDeps):
             except Exception as exc:  # noqa: BLE001
                 emit("agent_state", agent="tools", status="degraded", detail=f"LLM tool selection failed ({type(exc).__name__}); using rule-based selection")
                 decision = H.pick_tool_calls(state["question"], state.get("intent", ""), {t.name for t in deps.registry.visible_to(user)}, prior, filters)
+            if state.get("intent") == "admin_action" and not prior and not decision.get("calls"):
+                # An explicit admin request must reach the registry (and its approval gate); the model asking for more detail is not an outcome.
+                decision = H.pick_tool_calls(state["question"], "admin_action", {t.name for t in deps.registry.visible_to(user)}, prior, filters)
             calls = (decision.get("calls") or [])[:3]
             if decision.get("done") or not calls:
                 break
