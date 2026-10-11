@@ -36,6 +36,16 @@ def select_evidence(state: dict, max_chunks: int = 8, max_chars: int = 7000) -> 
     return out
 
 
+_WRITE_TOOLS = ("mcp_create_incident_ticket", "admin_reindex")
+_CLAIMS_ACTION = re.compile(r"\b(has been created|have created|i created|was created|ticket id|TCK-\d+|re-?index(ing)? (has|was)? ?(started|completed|triggered))\b", re.I)
+NO_ACTION_ANSWER = ("No action was taken: the request did not reach a completed approval step, so nothing was created or changed. "
+                    "Please try again, naming the service and what happened (for example: Create a sev2 incident ticket for card-processing latency spikes).")
+
+
+def _write_succeeded(state: dict) -> bool:
+    return any(r["tool"] in _WRITE_TOOLS and r.get("ok") for r in state.get("tool_results", []))
+
+
 def _tool_body(r: dict, state: dict) -> str:
     """Tool output for the answer prompt. Raw incident lists are replaced by a count once python_analysis has computed the numbers."""
     data = r["data"]
@@ -73,6 +83,9 @@ def build_user_prompt(state: dict, evidence: list[dict], feedback: str) -> str:
             continue
         body = _tool_body(r, state) if r["ok"] else f"UNAVAILABLE ({r['status']}): {r['error']}"
         parts.append(injection.spotlight("tool_result", body, id=r["id"], tool=r["tool"], status=r["status"]))
+    if state.get("intent") == "admin_action" and not _write_succeeded(state):
+        parts.append("ACTION STATUS (trusted): no write action was executed in this turn. Do NOT say a ticket was created or give a ticket id. "
+                     "Say plainly that nothing was done and why (see the tool results, if any).")
     prompt = "\n\n".join(parts) + f"\n\nQUESTION: {state['question']}"
     if feedback:
         prompt += f"\n\nYOUR PREVIOUS DRAFT FAILED VALIDATION. Fix these problems and answer again:\n{feedback}"
@@ -168,6 +181,11 @@ def make_validator(deps: AgentDeps):
         # 1) citations: exist, authorised, present, grounded
         cit_checks, invalid = CitationVerifier(evidence, set(tools), user.allowed_access_levels).verify(draft, citations_required=required)
         emit("validation", stage="citations", passed=all(c.passed for c in cit_checks if c.severity == "error"), checks=[c.to_dict() for c in cit_checks])
+        action_checks: list[CheckResult] = []
+        if state.get("intent") == "admin_action" and not _write_succeeded(state) and _CLAIMS_ACTION.search(draft):
+            action_checks.append(CheckResult("action_claims_supported", False, "answer claims an action that no tool executed"))
+            emit("validation", stage="action", passed=False, checks=[c.to_dict() for c in action_checks])
+        all_checks += action_checks
         # 2) safety: canary / secrets / PII redaction
         out_checks, cleaned = deps.output_guard.check(draft)
         emit("validation", stage="safety", passed=all(c.passed for c in out_checks), checks=[c.to_dict() for c in out_checks])
@@ -226,6 +244,8 @@ def make_validator(deps: AgentDeps):
                            + ("The most relevant sources I found are listed below; please review them directly." if top else
                               "Please try rephrasing the question or narrowing it by service, document type or date.")
                            + "".join(f" [{e['chunk_id']}]" for e in top))
+            if any(c.name == "action_claims_supported" for c in failed):
+                cleaned = NO_ACTION_ANSWER
             emit("guardrail", kind="answer_repaired", failed=[c.name for c in failed])
         cited = extract_citations(cleaned)
         citations, sources = source_lines(cited, evidence, tools)

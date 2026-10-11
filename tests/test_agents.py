@@ -185,3 +185,11 @@ def test_admin_ticket_request_names_the_service_from_the_question():
     call = H.pick_tool_calls("Please create an incident ticket for card-processing latency spikes", "admin_action",
                              {"mcp_create_incident_ticket"}, [], {})["calls"][0]
     assert call["tool"] == "mcp_create_incident_ticket" and call["args"]["service"] == "card-processing"
+
+
+def test_unsupported_action_claims_are_detected():
+    from app.agents.nodes_final import _CLAIMS_ACTION, _write_succeeded
+    assert _CLAIMS_ACTION.search("I have created an incident ticket. The ticket ID is TCK-1001.")
+    assert not _CLAIMS_ACTION.search("No action was taken.")
+    assert not _write_succeeded({"tool_results": []})
+    assert _write_succeeded({"tool_results": [{"tool": "mcp_create_incident_ticket", "ok": True}]})
