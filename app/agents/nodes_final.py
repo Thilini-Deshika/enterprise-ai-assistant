@@ -170,6 +170,12 @@ def make_validator(deps: AgentDeps):
                 # Research answers are built from the aggregated findings, so the judge must see them too.
                 research = ((state.get("research") or {}).get("summary") or "")[:4000]
                 research_part = f"\n\nRESEARCH FINDINGS (aggregated from the documents):\n{research}" if research else ""
+                # Follow-ups ("those root causes") restate earlier, already validated answers, so the judge may rely on them.
+                mem = state.get("memory") or {}
+                earlier = "\n".join(f"{m['role']}: {m['content'][:1200]}" for m in mem.get("recent_turns", [])[-4:])
+                if mem.get("summary"):
+                    earlier = f"Summary: {mem['summary'][:800]}\n" + earlier
+                research_part += f"\n\nEARLIER CONVERSATION (already verified; the answer may restate it):\n{earlier}" if earlier else ""
                 verdict = await deps.llm.json(JUDGE_SYSTEM, f"EVIDENCE:\n{ev_text}{research_part}\n\nTOOL RESULTS: {json.dumps([t['data'] for t in tools.values()], default=str)[:1500]}\n\nANSWER:\n{cleaned}",
                                               task="judge", tier="fast", ctx={})
                 ok = bool(verdict.get("faithful", True))
