@@ -101,6 +101,17 @@ def _datasets(state: dict) -> dict[str, list[dict]]:
     return ds
 
 
+def _prior_view(r: dict) -> dict:
+    """What the tool-selection LLM sees of an earlier result: a short, unambiguous status line."""
+    view = {k: r[k] for k in ("tool", "status", "error")}
+    data = r.get("data")
+    if r["tool"] == "mcp_list_incidents" and r.get("ok") and isinstance(data, dict):
+        view["data"] = f"{len(data.get('items', []))} incidents loaded as dataset 'incidents'. Do NOT call mcp_list_incidents again; call python_analysis next."
+    else:
+        view["data"] = str(data)[:300]
+    return view
+
+
 def make_tools(deps: AgentDeps):
     @instrument("tools", advances=False)
     async def tools(state: dict) -> dict:
@@ -127,7 +138,7 @@ def make_tools(deps: AgentDeps):
         filters = state.get("filters") or {}
         for _ in range(deps.settings.max_tool_iterations):
             prompt = (f"GOAL: {state['plan'][state['step_idx']].get('goal', '')}\nUSER QUESTION: {state['question']}\nFILTERS: {json.dumps(filters)}\n"
-                      f"PRIOR TOOL RESULTS: {json.dumps([{k: r[k] for k in ('tool', 'status', 'error')} | {'data': str(r.get('data'))[:300]} for r in prior if r['tool'] != 'knowledge_search'], default=str)}")
+                      f"PRIOR TOOL RESULTS: {json.dumps([_prior_view(r) for r in prior if r['tool'] != 'knowledge_search'], default=str)}")
             try:
                 decision = await deps.llm.json(TOOL_SYSTEM.format(catalogue=available), prompt, task="tool_select", tier="fast",
                                                ctx={"question": state["question"], "intent": state.get("intent", ""), "available": deps.registry.all_names(),  # offline mock ignores the allow-list on purpose, to exercise server-side RBAC
@@ -139,6 +150,8 @@ def make_tools(deps: AgentDeps):
             if decision.get("done") or not calls:
                 break
             for call in calls:
+                if any(p["tool"] == call.get("tool") and p.get("args") == (call.get("args") or {}) and p.get("ok") for p in prior):
+                    continue  # identical call already succeeded: do not repeat it
                 try:
                     res = await deps.registry.execute(str(call.get("tool")), call.get("args") or {}, ctx)
                 except ApprovalRequired as exc:
@@ -150,6 +163,12 @@ def make_tools(deps: AgentDeps):
                 ctx.datasets = _datasets({**state, "tool_results": state.get("tool_results", []) + new_results})
             if needs_approval or all(r["status"] in ("denied", "blocked") for r in new_results[-len(calls):]):
                 break
+        if (state.get("intent") == "analytics" and not needs_approval and "python_analysis" in {t.name for t in deps.registry.visible_to(user)}
+                and any(r["tool"] == "mcp_list_incidents" and r.get("ok") for r in prior)
+                and not any(r["tool"] == "python_analysis" for r in prior)):
+            # the model stopped before computing: run the rule-based analysis so numbers are computed, never estimated by the LLM
+            res = await deps.registry.execute("python_analysis", {"dataset": "incidents", "code": H.analysis_code(state["question"])}, ctx)
+            new_results.append(res)
         if needs_approval:
             return {"tool_results": new_results, "pending_tool_calls": needs_approval, "agent_status": {"tools": "ok"}}
         bad = [r for r in new_results if r["status"] in ("unavailable", "timeout", "error")]

@@ -36,6 +36,18 @@ def select_evidence(state: dict, max_chunks: int = 8, max_chars: int = 7000) -> 
     return out
 
 
+def _tool_body(r: dict, state: dict) -> str:
+    """Tool output for the answer prompt. Raw incident lists are replaced by a count once python_analysis has computed the numbers."""
+    data = r["data"]
+    if r["tool"] == "mcp_list_incidents" and isinstance(data, dict):
+        items = data.get("items", [])
+        if any(x["tool"] == "python_analysis" and x.get("ok") for x in state.get("tool_results", [])):
+            return json.dumps({"incident_count": len(items), "note": "full list analysed by python_analysis; use its result for all numbers"})
+        keys = ("incident_id", "service", "severity", "duration_minutes", "root_cause_category")
+        return json.dumps([{k: i.get(k) for k in keys} for i in items], default=str)[:9000]
+    return json.dumps(data, default=str)[:2500]
+
+
 def build_user_prompt(state: dict, evidence: list[dict], feedback: str) -> str:
     mem, parts = state.get("memory", {}), []
     prof = mem.get("profile", {})
@@ -59,7 +71,7 @@ def build_user_prompt(state: dict, evidence: list[dict], feedback: str) -> str:
     for r in state.get("tool_results", []):
         if r["tool"] == "knowledge_search":
             continue
-        body = json.dumps(r["data"], default=str)[:2500] if r["ok"] else f"UNAVAILABLE ({r['status']}): {r['error']}"
+        body = _tool_body(r, state) if r["ok"] else f"UNAVAILABLE ({r['status']}): {r['error']}"
         parts.append(injection.spotlight("tool_result", body, id=r["id"], tool=r["tool"], status=r["status"]))
     prompt = "\n\n".join(parts) + f"\n\nQUESTION: {state['question']}"
     if feedback:

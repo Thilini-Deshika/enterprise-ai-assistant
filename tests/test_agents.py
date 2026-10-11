@@ -155,3 +155,18 @@ async def test_preference_message_skips_retrieval_and_is_stored(container, users
     assert "retrieval" not in nodes and "research" not in nodes
     assert final(ev)["validation"]["passed"]
     assert any("short bullet" in p for p in await container.memory.preferences(users["analyst"]))
+
+
+def test_prior_view_tells_the_tool_agent_the_dataset_is_loaded():
+    from app.agents.nodes_work import _prior_view
+    res = {"tool": "mcp_list_incidents", "status": "ok", "error": "", "ok": True, "data": {"items": [{"incident_id": "INC-2025-004"}] * 3}}
+    assert "3 incidents loaded" in _prior_view(res)["data"]
+
+
+def test_tool_body_replaces_raw_incidents_once_analysis_has_run():
+    import json
+    from app.agents.nodes_final import _tool_body
+    inc = {"tool": "mcp_list_incidents", "ok": True, "data": {"items": [{"incident_id": "INC-2025-004", "duration_minutes": 74}]}}
+    ana = {"tool": "python_analysis", "ok": True, "data": {"result": []}}
+    assert "incident_count" in json.loads(_tool_body(inc, {"tool_results": [inc, ana]}))
+    assert "INC-2025-004" in _tool_body(inc, {"tool_results": [inc]})
