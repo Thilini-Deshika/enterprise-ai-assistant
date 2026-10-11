@@ -193,3 +193,15 @@ def test_unsupported_action_claims_are_detected():
     assert not _CLAIMS_ACTION.search("No action was taken.")
     assert not _write_succeeded({"tool_results": []})
     assert _write_succeeded({"tool_results": [{"tool": "mcp_create_incident_ticket", "ok": True}]})
+
+
+async def test_admin_request_reaches_approval_even_if_model_proposes_no_tool_call(container, users, monkeypatch):
+    original = container.llm.json
+
+    async def lazy(system, prompt, *, task="", **kw):
+        if task == "tool_select":
+            return {"calls": [], "done": True, "reason": "need more details"}
+        return await original(system, prompt, task=task, **kw)
+    monkeypatch.setattr(container.llm, "json", lazy)
+    ev = await run_turn(container, users["admin"], "sess-hitl-lazy-1", "Please create an incident ticket for card-processing latency spikes")
+    assert of(ev, "approval_required") and not of(ev, "final")
