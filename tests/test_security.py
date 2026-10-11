@@ -109,3 +109,12 @@ def test_brand_guard_flags_guarantees_and_adds_disclaimer():
     assert not next(c for c in checks if c.name == "brand_voice").passed
     _, out = BrandGuard().check("The regulatory deadline for notification is 72 hours after a Sev1 incident.")
     assert "not legal or regulatory advice" in out
+
+
+def test_tool_args_are_normalised_before_validation():
+    from app.tools.base import normalise_args
+    from app.tools.builtin import ListIncidentsArgs
+    raw = {"service": "payment-gateway", "severity": "", "since": None, "limit": 1000, "bogus": 1}
+    fixed = normalise_args(ListIncidentsArgs, raw)
+    assert fixed == {"service": "payment-gateway", "limit": 200}
+    assert ListIncidentsArgs.model_validate(fixed).severity is None

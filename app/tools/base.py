@@ -84,6 +84,26 @@ def _sanitize_output(obj: Any, found: list[str]) -> Any:
     return obj
 
 
+def normalise_args(model: type[BaseModel], raw: dict | None) -> dict:
+    """Repair common LLM slips before strict validation: empty/null optionals are dropped,
+    unknown keys are ignored and numbers are clamped to the schema's bounds. Validation still decides."""
+    props = model.model_json_schema().get("properties", {})
+    out: dict = {}
+    for key, value in (raw or {}).items():
+        spec = props.get(key)
+        if spec is None:
+            continue
+        if value is None or (isinstance(value, str) and value.strip().lower() in ("", "null", "none", "any", "all")):
+            continue
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if "maximum" in spec:
+                value = min(value, spec["maximum"])
+            if "minimum" in spec:
+                value = max(value, spec["minimum"])
+        out[key] = value
+    return out
+
+
 class ToolRegistry:
     def __init__(self, settings: Settings, audit: AuditLog, limiter: RateLimiter):
         self.s, self.audit, self.limiter = settings, audit, limiter
@@ -135,7 +155,7 @@ class ToolRegistry:
         except RateLimitExceeded as exc:
             return finish("rate_limited", error=exc.message)
         try:  # (4) validation
-            args = spec.args_model.model_validate(raw_args or {})
+            args = spec.args_model.model_validate(normalise_args(spec.args_model, raw_args))
         except ValidationError as exc:
             msg = "; ".join(f"{'.'.join(map(str, e['loc']))}: {e['msg']}" for e in exc.errors())[:300]
             return finish("invalid_args", error=f"Invalid arguments: {msg}")
