@@ -121,3 +121,13 @@ async def test_hallucinated_citation_is_repaired_or_regenerated(container, users
     ev = await run_turn(container, users["analyst"], "sess-halluc-1", "What is the password policy for MFA?")
     assert any(not c["passed"] and c["name"] == "citations_exist" for v in of(ev, "validation") for c in v["checks"])
     assert of(ev, "token_reset") and "FAKE-999" not in final(ev)["answer"]
+
+
+def test_research_fallback_keeps_only_known_citations():
+    from app.agents.nodes_final import research_fallback
+    evidence = {"INC-1#2": {"chunk_id": "INC-1#2"}}
+    summary = "- pool exhaustion [INC-1#2]\n- unknown source [INC-9#1]"
+    out = research_fallback(summary, evidence)
+    assert "[INC-1#2]" in out and "INC-9#1" not in out
+    assert research_fallback("no markers here", evidence) == ""
+    assert research_fallback("", evidence) == ""

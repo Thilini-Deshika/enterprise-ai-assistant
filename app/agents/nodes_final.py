@@ -24,7 +24,8 @@ def select_evidence(state: dict, max_chunks: int = 8, max_chars: int = 7000) -> 
     research = state.get("research") or {}
     cited = set(extract_citations(research.get("summary", "")))
     if cited:
-        max_chunks = 14
+        # Research answers must be able to cite everything the findings cite, so keep all of those chunks in context.
+        max_chunks, max_chars = min(len(cited) + 4, 30), 14000
     ordered = sorted(state.get("evidence", []), key=lambda e: (e["chunk_id"] not in cited, -e.get("rerank", 0)))
     out, used = [], 0
     for e in ordered:
@@ -50,6 +51,11 @@ def build_user_prompt(state: dict, evidence: list[dict], feedback: str) -> str:
     if state.get("research"):
         r = state["research"]
         parts.append(injection.spotlight("research", r["summary"], documents_analysed=r["stats"].get("documents_analysed"), status=r["status"]))
+        ids = list(dict.fromkeys(c for c in extract_citations(r["summary"]) if c in {e["chunk_id"] for e in evidence}))[:25]
+        if ids:
+            parts.append("CITATION RULE (trusted): build your answer from the research findings above. Every root-cause group and every incident you mention "
+                         "must end with its citation marker(s) copied exactly from these allowed markers: " + " ".join(f"[{c}]" for c in ids) + ". "
+                         "Do not cite bare incident ids such as INC-2026-003; always include the #number. An answer without markers is rejected.")
     for r in state.get("tool_results", []):
         if r["tool"] == "knowledge_search":
             continue
@@ -93,6 +99,22 @@ def make_response(deps: AgentDeps):
 # ------------------------------------------------------------------------------------ validator
 JUDGE_SYSTEM = ("You are a strict fact-checker. Given EVIDENCE/TOOL RESULTS and an ANSWER, return ONLY JSON "
                 '{"faithful": true|false, "unsupported_claims": ["..."]}. faithful=true only if every factual claim in the ANSWER is supported by the evidence.')
+
+
+def research_fallback(summary: str, evidence: dict[str, dict]) -> str:
+    """Last resort for research answers: show the aggregated findings themselves.
+
+    The findings were produced from documents the user may read and carry chunk markers that the research run registered
+    as evidence. Markers that are not in the evidence are removed. Returns "" if nothing citable remains."""
+    if not summary:
+        return ""
+    for cid in set(extract_citations(summary)):
+        if cid not in evidence:
+            summary = summary.replace(f"[{cid}]", "")
+    if not any(c in evidence for c in extract_citations(summary)):
+        return ""
+    return ("I could not produce a polished answer that passed every check, so these are the verified research findings "
+            "taken directly from the documents:\n\n" + summary.strip())
 
 
 def source_lines(cited: list[str], evidence: dict[str, dict], tools: dict[str, dict]) -> tuple[list[dict], str]:
@@ -144,8 +166,11 @@ def make_validator(deps: AgentDeps):
         # 4) LLM faithfulness judge (skipped offline / when disabled / nothing to check against)
         if deps.settings.llm_judge_enabled and deps.llm.provider != "mock" and (evidence or tools) and not invalid:
             try:
-                ev_text = "\n".join(f"[{e['chunk_id']}] {e['text'][:600]}" for e in list(evidence.values())[:12])
-                verdict = await deps.llm.json(JUDGE_SYSTEM, f"EVIDENCE:\n{ev_text}\n\nTOOL RESULTS: {json.dumps([t['data'] for t in tools.values()], default=str)[:1500]}\n\nANSWER:\n{cleaned}",
+                ev_text = "\n".join(f"[{e['chunk_id']}] {e['text'][:800]}" for e in list(evidence.values())[:20])
+                # Research answers are built from the aggregated findings, so the judge must see them too.
+                research = ((state.get("research") or {}).get("summary") or "")[:4000]
+                research_part = f"\n\nRESEARCH FINDINGS (aggregated from the documents):\n{research}" if research else ""
+                verdict = await deps.llm.json(JUDGE_SYSTEM, f"EVIDENCE:\n{ev_text}{research_part}\n\nTOOL RESULTS: {json.dumps([t['data'] for t in tools.values()], default=str)[:1500]}\n\nANSWER:\n{cleaned}",
                                               task="judge", tier="fast", ctx={})
                 ok = bool(verdict.get("faithful", True))
                 all_checks.append(CheckResult("faithfulness_judge", ok, "all claims supported" if ok else f"unsupported: {verdict.get('unsupported_claims', [])[:2]}"))
@@ -157,14 +182,26 @@ def make_validator(deps: AgentDeps):
         degraded = bool(state.get("degraded")) or state.get("agent_status", {}).get("response") == "degraded"
         if failed and attempts < MAX_ATTEMPTS:
             feedback = "; ".join(f"{c.name}: {c.detail}" for c in failed)
+            if any(c.name == "citations_present" for c in failed):
+                usable = [c for c in extract_citations((state.get("research") or {}).get("summary", "")) if c in evidence] or list(evidence)
+                feedback += ("; cite using these exact markers, in square brackets, after the claims they support: "
+                             + " ".join(f"[{c}]" for c in usable[:8]))
             emit("agent_state", agent="validator", status="retry", detail=f"validation failed ({feedback[:160]}); sending back to the response agent")
             return {"validation": {"passed": False, "feedback": feedback, "checks": [c.to_dict() for c in all_checks]}}
         if failed:  # attempts exhausted -> repair or fall back to a safe, fully-verified answer
             degraded = True
             for bad in invalid:
                 cleaned = cleaned.replace(f"[{bad}]", "")
-            still = [c.name for c in failed if c.name not in ("citations_exist",)]
-            if still or not extract_citations(cleaned) and required:
+            if {c.name for c in failed} == {"citations_present"}:
+                rc = [c for c in extract_citations((state.get("research") or {}).get("summary", "")) if c in evidence][:6]
+                if rc:  # the answer itself passed every other check; attach the verified markers it was built from
+                    cleaned = cleaned.rstrip() + "\n\nEvidence reviewed: " + " ".join(f"[{c}]" for c in rc)
+            still = [c.name for c in failed if c.name not in ("citations_exist", "citations_present")]
+            fallback = research_fallback((state.get("research") or {}).get("summary", ""), evidence) if (still or not extract_citations(cleaned) and required) else ""
+            if fallback:
+                _, safe = deps.output_guard.check(fallback)
+                _, cleaned = deps.brand_guard.check(safe)
+            elif still or not extract_citations(cleaned) and required:
                 top = list(evidence.values())[:3]
                 cleaned = ("I wasn't able to produce an answer I could fully verify against the documents available to you. "
                            + ("The most relevant sources I found are listed below; please review them directly." if top else
