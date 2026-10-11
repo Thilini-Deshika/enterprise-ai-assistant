@@ -277,6 +277,16 @@ def login_sidebar() -> None:
     if sb.button("Send this prompt"):
         st.session_state.queued = DEMO_PROMPTS[choice]
         st.rerun()
+    if u["role"] == "administrator":
+        with sb.expander("Audit log (admin)"):
+            if st.button("Refresh audit log"):
+                st.rerun()
+            r = httpx.get(f"{API}/admin/audit", params={"limit": 25}, headers=headers(), timeout=15)
+            items = r.json().get("items", []) if r.status_code == 200 else []
+            if items:
+                st.dataframe(items, use_container_width=True, hide_index=True)
+            else:
+                st.caption("No audit entries yet." if r.status_code == 200 else f"Could not load the audit log ({r.status_code}).")
     with sb.expander("Memory snapshot"):
         r = httpx.get(f"{API}/sessions/{st.session_state.session_id}/memory", headers=headers(), timeout=15)
         st.json(r.json() if r.status_code == 200 else {"turns": 0}, expanded=False)
