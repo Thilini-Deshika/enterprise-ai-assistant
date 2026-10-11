@@ -304,6 +304,7 @@ if not st.session_state.token:
     st.info("Sign in from the sidebar to start. The right-hand panel shows the agents working in real time.")
     st.stop()
 
+typed = st.chat_input("Ask about policies, incidents, runbooks, services...")  # top level, so it stays pinned below the messages
 chat_col, act_col = st.columns([3, 2], gap="large")
 with act_col:
     st.subheader("Agent activity")
@@ -318,10 +319,10 @@ with chat_col:
                 st.caption("Served in degraded mode (a dependency was unavailable).")
             if m["role"] == "assistant" and m.get("message_id"):
                 b1, b2, _ = st.columns([1, 1, 8])
-                b1.button("Helpful", key=f"up{i}", on_click=send_feedback, args=(m["message_id"], 1))
-                b2.button("Not helpful", key=f"dn{i}", on_click=send_feedback, args=(m["message_id"], -1))
+                b1.button("", icon=":material/thumb_up:", help="Helpful", key=f"up{i}", on_click=send_feedback, args=(m["message_id"], 1))
+                b2.button("", icon=":material/thumb_down:", help="Not helpful", key=f"dn{i}", on_click=send_feedback, args=(m["message_id"], -1))
 
-    prompt = st.chat_input("Ask about policies, incidents, runbooks, services...") or st.session_state.queued
+    prompt = typed or st.session_state.queued
     st.session_state.queued = None
     if prompt:
         st.session_state.messages.append({"role": "user", "content": prompt})
