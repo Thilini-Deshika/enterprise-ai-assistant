@@ -118,3 +118,11 @@ def test_tool_args_are_normalised_before_validation():
     fixed = normalise_args(ListIncidentsArgs, raw)
     assert fixed == {"service": "payment-gateway", "limit": 200}
     assert ListIncidentsArgs.model_validate(fixed).severity is None
+
+
+def test_severity_spellings_are_mapped_to_the_schema():
+    from app.tools.base import normalise_args
+    from app.tools.builtin import CreateTicketArgs
+    base = {"title": "latency spikes", "service": "card-processing", "description": "latency spikes"}
+    for raw, want in (("P2", "sev2"), ("Sev 3", "sev3"), ("critical", "sev1"), ("4", "sev4"), ("sev1", "sev1")):
+        assert CreateTicketArgs.model_validate(normalise_args(CreateTicketArgs, {**base, "severity": raw})).severity == want

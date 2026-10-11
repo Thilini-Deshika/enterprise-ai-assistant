@@ -165,7 +165,7 @@ def make_tools(deps: AgentDeps):
                 new_results.append(res)
                 prior.append(res)
                 ctx.datasets = _datasets({**state, "tool_results": state.get("tool_results", []) + new_results})
-            if decision.get("done") or needs_approval or all(r["status"] in ("denied", "blocked") for r in new_results[-len(calls):]):
+            if (decision.get("done") and not any(r["status"] == "invalid_args" for r in new_results[-len(calls):])) or needs_approval or all(r["status"] in ("denied", "blocked") for r in new_results[-len(calls):]):
                 break
         if (state.get("intent") == "analytics" and not needs_approval and "python_analysis" in {t.name for t in deps.registry.visible_to(user)}
                 and any(r["tool"] == "mcp_list_incidents" and r.get("ok") for r in prior)

@@ -84,6 +84,22 @@ def _sanitize_output(obj: Any, found: list[str]) -> Any:
     return obj
 
 
+_SEVERITY_ALIASES = {"p1": "sev1", "p2": "sev2", "p3": "sev3", "p4": "sev4", "critical": "sev1", "high": "sev2", "major": "sev2",
+                     "medium": "sev3", "moderate": "sev3", "low": "sev4", "minor": "sev4"}
+
+
+def _coerce_enum(value: str, allowed: list) -> str:
+    """Map common spellings (P2, Sev 2, High) onto an enum the schema accepts; leave anything else for validation to reject."""
+    v = value.strip().lower().replace(" ", "").replace("-", "").replace("_", "")
+    for a in allowed:
+        if v == str(a).lower().replace("_", "").replace("-", ""):
+            return a
+    if v.isdigit() and f"sev{v}" in allowed:
+        return f"sev{v}"
+    alias = _SEVERITY_ALIASES.get(v)
+    return alias if alias in allowed else value
+
+
 def normalise_args(model: type[BaseModel], raw: dict | None) -> dict:
     """Repair common LLM slips before strict validation: empty/null optionals are dropped,
     unknown keys are ignored and numbers are clamped to the schema's bounds. Validation still decides."""
@@ -95,6 +111,9 @@ def normalise_args(model: type[BaseModel], raw: dict | None) -> dict:
             continue
         if value is None or (isinstance(value, str) and value.strip().lower() in ("", "null", "none", "any", "all")):
             continue
+        enum = spec.get("enum") or next((o["enum"] for o in spec.get("anyOf", []) if "enum" in o), None)
+        if enum and isinstance(value, (str, int)) and not isinstance(value, bool):
+            value = _coerce_enum(str(value), enum)
         if isinstance(value, (int, float)) and not isinstance(value, bool):
             if "maximum" in spec:
                 value = min(value, spec["maximum"])
