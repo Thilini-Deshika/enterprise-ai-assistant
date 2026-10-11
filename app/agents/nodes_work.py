@@ -146,11 +146,12 @@ def make_tools(deps: AgentDeps):
             except Exception as exc:  # noqa: BLE001
                 emit("agent_state", agent="tools", status="degraded", detail=f"LLM tool selection failed ({type(exc).__name__}); using rule-based selection")
                 decision = H.pick_tool_calls(state["question"], state.get("intent", ""), {t.name for t in deps.registry.visible_to(user)}, prior, filters)
-            if state.get("intent") == "admin_action" and not prior and not decision.get("calls"):
+            if state.get("intent") == "admin_action" and not prior and not [c for c in decision.get("calls") or [] if c.get("tool") in ("mcp_create_incident_ticket", "admin_reindex")]:
                 # An explicit admin request must reach the registry (and its approval gate); the model asking for more detail is not an outcome.
                 decision = H.pick_tool_calls(state["question"], "admin_action", {t.name for t in deps.registry.visible_to(user)}, prior, filters)
             calls = (decision.get("calls") or [])[:3]
-            if decision.get("done") or not calls:
+            if not calls:
+                emit("agent_state", agent="tools", status="running", detail="no further tool calls needed")
                 break
             for call in calls:
                 if any(p["tool"] == call.get("tool") and p.get("args") == (call.get("args") or {}) and p.get("ok") for p in prior):
@@ -164,7 +165,7 @@ def make_tools(deps: AgentDeps):
                 new_results.append(res)
                 prior.append(res)
                 ctx.datasets = _datasets({**state, "tool_results": state.get("tool_results", []) + new_results})
-            if needs_approval or all(r["status"] in ("denied", "blocked") for r in new_results[-len(calls):]):
+            if decision.get("done") or needs_approval or all(r["status"] in ("denied", "blocked") for r in new_results[-len(calls):]):
                 break
         if (state.get("intent") == "analytics" and not needs_approval and "python_analysis" in {t.name for t in deps.registry.visible_to(user)}
                 and any(r["tool"] == "mcp_list_incidents" and r.get("ok") for r in prior)

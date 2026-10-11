@@ -205,3 +205,17 @@ async def test_admin_request_reaches_approval_even_if_model_proposes_no_tool_cal
     monkeypatch.setattr(container.llm, "json", lazy)
     ev = await run_turn(container, users["admin"], "sess-hitl-lazy-1", "Please create an incident ticket for card-processing latency spikes")
     assert of(ev, "approval_required") and not of(ev, "final")
+
+
+async def test_tool_calls_are_executed_even_when_model_also_says_done(container, users, monkeypatch):
+    original = container.llm.json
+
+    async def eager(system, prompt, *, task="", **kw):
+        if task == "tool_select":
+            return {"calls": [{"tool": "mcp_create_incident_ticket", "args": {"title": "card-processing latency spikes", "severity": "sev3",
+                                                                              "service": "card-processing", "description": "latency spikes"}}],
+                    "done": True, "reason": "single step"}
+        return await original(system, prompt, task=task, **kw)
+    monkeypatch.setattr(container.llm, "json", eager)
+    ev = await run_turn(container, users["admin"], "sess-hitl-done-1", "Please create an incident ticket for card-processing latency spikes")
+    assert of(ev, "approval_required") and not of(ev, "final")
