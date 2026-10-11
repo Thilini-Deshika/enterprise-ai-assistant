@@ -46,6 +46,28 @@ def extract_citations(text: str) -> list[str]:
     return list(dict.fromkeys(CITATION_RE.findall(text)))
 
 
+_GROUP_RE = re.compile(r"\[([^\[\]]*#\d+[^\[\]]*,[^\[\]]*)\]")
+_ITEM_RE = re.compile(r"^\s*(?:([A-Za-z0-9][A-Za-z0-9_.\-]*)#)?(\d+)\s*$|^\s*#(\d+)\s*$")
+
+
+def normalise_citations(text: str) -> str:
+    """Expand compact markers such as [RB-1#2, #3] or [RB-1#2, RB-2#1] into [RB-1#2] [RB-1#3] [RB-2#1] so each one is verified."""
+    def expand(m: re.Match) -> str:
+        out, doc = [], None
+        for part in m.group(1).split(","):
+            im = _ITEM_RE.match(part)
+            if not im:
+                return m.group(0)
+            if im.group(1):
+                doc = im.group(1)
+            num = im.group(2) or im.group(3)
+            if doc is None:
+                return m.group(0)
+            out.append(f"[{doc}#{num}]")
+        return " ".join(out)
+    return _GROUP_RE.sub(expand, text)
+
+
 class CitationVerifier:
     def __init__(self, evidence: dict[str, dict], tool_ids: set[str], allowed_levels: tuple[str, ...]):
         self.evidence, self.tool_ids, self.allowed_levels = evidence, tool_ids, allowed_levels

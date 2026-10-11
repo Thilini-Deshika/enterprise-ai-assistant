@@ -31,9 +31,17 @@ _TYPE_KEYWORDS = {
 }
 
 
+_PREFERENCE = re.compile(r"^\s*(please\s+)?((remember|note)( that| this)?\b|from now on\b|i prefer\b|my preference is\b|always (answer|respond|reply|use)\b)[^?]{3,240}$", re.I)
+
+
+def is_preference_statement(question: str) -> bool:
+    """A statement about how the user likes answers ("remember that I prefer short bullets"), not a question to research."""
+    return bool(_PREFERENCE.match(question.strip()))
+
+
 def classify_intent(question: str) -> str:
     q = question.strip()
-    if _CHITCHAT.match(q):
+    if _CHITCHAT.match(q) or is_preference_statement(q):
         return "chitchat"
     if _ADMIN.search(q):
         return "admin_action"

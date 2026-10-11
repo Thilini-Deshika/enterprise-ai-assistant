@@ -98,6 +98,8 @@ def make_supervisor(deps: AgentDeps):
             status = "degraded"
             emit("agent_state", agent="supervisor", status="degraded", detail=f"LLM routing failed ({type(exc).__name__}); using rule-based routing")
         intent = decision.get("intent") if decision.get("intent") in H.INTENTS else H.classify_intent(q)
+        if H.is_preference_statement(q):
+            intent = "chitchat"  # nothing to research; memory_write stores the preference
         llm_filters = {k: v for k, v in (decision.get("filters") or {}).items() if v}
         filters = SearchFilters.sanitize({**det_filters, **llm_filters})
         plan = [p for p in (decision.get("plan") or []) if isinstance(p, dict) and p.get("agent") in VALID_AGENTS][:3]

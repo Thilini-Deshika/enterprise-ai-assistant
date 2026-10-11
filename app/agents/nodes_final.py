@@ -13,7 +13,7 @@ from app.llm.mock_backend import MockBackend
 from app.logging_config import get_logger
 from app.memory.manager import max_access_level
 from app.security import injection
-from app.security.guardrails import CITATION_RE, CheckResult, CitationVerifier, extract_citations
+from app.security.guardrails import CITATION_RE, CheckResult, CitationVerifier, extract_citations, normalise_citations
 
 log = get_logger("agents.final")
 MAX_ATTEMPTS = 2
@@ -147,7 +147,7 @@ def _validator_failed(state: dict) -> dict:
 def make_validator(deps: AgentDeps):
     @instrument("validator", on_fail=_validator_failed)
     async def validator(state: dict) -> dict:
-        user, draft, attempts = user_of(state), state.get("draft", ""), state.get("attempts", 1)
+        user, draft, attempts = user_of(state), normalise_citations(state.get("draft", "")), state.get("attempts", 1)
         evidence = {e["chunk_id"]: e for e in state.get("evidence", [])}
         tools = {r["id"]: r for r in state.get("tool_results", []) if r["ok"] and r["tool"] != "knowledge_search"}
         required = bool(evidence or tools) and state.get("intent") != "chitchat"

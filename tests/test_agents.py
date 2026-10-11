@@ -131,3 +131,27 @@ def test_research_fallback_keeps_only_known_citations():
     assert "[INC-1#2]" in out and "INC-9#1" not in out
     assert research_fallback("no markers here", evidence) == ""
     assert research_fallback("", evidence) == ""
+
+
+def test_normalise_citations_expands_compact_markers():
+    from app.security.guardrails import extract_citations, normalise_citations
+    text = "See [RB-PAY-001#2, #3, #4] and [RB-PAY-002#1, RB-PLT-003#3]."
+    assert extract_citations(normalise_citations(text)) == ["RB-PAY-001#2", "RB-PAY-001#3", "RB-PAY-001#4", "RB-PAY-002#1", "RB-PLT-003#3"]
+    assert normalise_citations("plain [RB-1#2] text, with [a, b]") == "plain [RB-1#2] text, with [a, b]"
+
+
+def test_preference_statement_is_not_researched():
+    from app.agents import heuristics as H
+    assert H.is_preference_statement("Remember that I prefer short bullet answers.")
+    assert H.classify_intent("Remember that I prefer short bullet answers.") == "chitchat"
+    assert not H.is_preference_statement("Which of those root causes had a runbook?")
+    assert not H.is_preference_statement("Remember when the gateway failed last year?")
+
+
+async def test_preference_message_skips_retrieval_and_is_stored(container, users):
+    await run_turn(container, users["analyst"], "sess-pref-1", "What is the password policy for MFA?")
+    ev = await run_turn(container, users["analyst"], "sess-pref-1", "Remember that I prefer short bullet answers.")
+    nodes = [e["node"] for e in of(ev, "node_start")]
+    assert "retrieval" not in nodes and "research" not in nodes
+    assert final(ev)["validation"]["passed"]
+    assert any("short bullet" in p for p in await container.memory.preferences(users["analyst"]))
